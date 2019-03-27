@@ -35,7 +35,9 @@ class BiLSTM_CRF(nn.Module):
         self.tag_to_ix = tag_to_ix
         self.tagset_size = len(tag_to_ix)
 
+        # 初始化embedding, shape(vocab_size, embedding_dim)
         self.word_embeds = nn.Embedding(vocab_size, embedding_dim)
+        # hiden_dim // 2 cause num_directions = 2
         self.lstm = nn.LSTM(embedding_dim, hidden_dim // 2,
                             num_layers=1, bidirectional=True)
 
@@ -90,8 +92,13 @@ class BiLSTM_CRF(nn.Module):
         return alpha
 
     def _get_lstm_features(self, sentence):
+        # ? 初始化采用init_hidden()为bi-lstm前向后向
+        # bi-lstm last_hidden shape(num_layers*num_directions=2, batch=1, hidden=EMBEDDING_DIM)
         self.hidden = self.init_hidden()
+        # sentence tensor([...])
+        # word_embeds 构成lstm输入格式 --> shape(input_seq=len(sentence), batch=1, hidden=EMBEDDING_DIM)
         embeds = self.word_embeds(sentence).view(len(sentence), 1, -1)
+        # lstm_out shape(input_seq=len(sentence), batch=1, hidden=?) ?
         lstm_out, self.hidden = self.lstm(embeds, self.hidden)
         lstm_out = lstm_out.view(len(sentence), self.hidden_dim)
         lstm_feats = self.hidden2tag(lstm_out)
@@ -158,6 +165,7 @@ class BiLSTM_CRF(nn.Module):
         return forward_score - gold_score
 
     def forward(self, sentence):  # dont confuse this with _forward_alg above.
+        # Parameter sentence 表示 sentence id序列
         # Get the emission scores from the BiLSTM
         lstm_feats = self._get_lstm_features(sentence)
 

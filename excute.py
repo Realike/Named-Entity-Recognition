@@ -40,8 +40,11 @@ optimizer = optim.SGD(model.parameters(), lr=0.01, weight_decay=1e-4)
 
 # Check predictions before training
 with torch.no_grad():
+    # sentence id序列
     precheck_sent = prepare_sequence(training_data[0][0], word_to_ix)
+    # 此training data的tags id序列
     precheck_tags = torch.tensor([tag_to_ix[t] for t in training_data[0][1]], dtype=torch.long)
+    print('预测前score和tags id序列:')
     print(model(precheck_sent))
 
 # Make sure prepare_sequence from earlier in the LSTM section is loaded
@@ -53,8 +56,8 @@ for epoch in range(300):  # again, normally you would NOT do 300 epochs, it is t
 
         # Step 2. Get our inputs ready for the network, that is,
         # turn them into Tensors of word indices.
-        sentence_in = prepare_sequence(sentence, word_to_ix)
-        targets = torch.tensor([tag_to_ix[t] for t in tags], dtype=torch.long)
+        sentence_in = prepare_sequence(sentence, word_to_ix)    # sentence id序列
+        targets = torch.tensor([tag_to_ix[t] for t in tags], dtype=torch.long)    # tags id序列
 
         # Step 3. Run our forward pass.
         loss = model.neg_log_likelihood(sentence_in, targets)
@@ -66,5 +69,9 @@ for epoch in range(300):  # again, normally you would NOT do 300 epochs, it is t
 
 # Check predictions after training
 with torch.no_grad():
+    # sentence id序列
     precheck_sent = prepare_sequence(training_data[0][0], word_to_ix)
+    print('预测后score和tags id序列:')
     print(model(precheck_sent))
+    print('对应的真实tags id序列:')
+    print(precheck_tags)
