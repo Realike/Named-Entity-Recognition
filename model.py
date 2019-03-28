@@ -99,6 +99,7 @@ class BiLSTM_CRF(nn.Module):
     def _get_lstm_features(self, sentence):
         # 初始化采用init_hidden()为bi-lstm前向后向h_0, c_0
         # bi-lstm 前向(或后向)last_hidden shape(num_layers*num_directions=2, batch=1, hidden=hidden_dim // 2)
+        # 每次forward都初始化hidden，hidden只影响当前序列，对全局model weights不影响
         self.hidden = self.init_hidden()
         # sentence tensor([...])
         # word_embeds 构成lstm输入格式 --> shape(input_seq=len(sentence), batch=1, hidden=EMBEDDING_DIM)
@@ -107,7 +108,7 @@ class BiLSTM_CRF(nn.Module):
         lstm_out, self.hidden = self.lstm(embeds, self.hidden)
         # to shape(len(sentence), hidden_dim)
         lstm_out = lstm_out.view(len(sentence), self.hidden_dim)
-        # lstm_feats shape(len(sentence), tagset_size)  未softmax
+        # lstm_feats shape(len(sentence), tagset_size)  未softmax(此模型只需求score，不需softmax都可)
         lstm_feats = self.hidden2tag(lstm_out)
         return lstm_feats
 
@@ -165,6 +166,7 @@ class BiLSTM_CRF(nn.Module):
         best_path.reverse()
         return path_score, best_path
 
+    # 求loss，计算得分loss=-(log(exp(s) / exp`(s)))=log(exp`(s)) - log(exp(s))=forward_score - gold_score
     def neg_log_likelihood(self, sentence, tags):
         feats = self._get_lstm_features(sentence)
         forward_score = self._forward_alg(feats)
@@ -173,7 +175,7 @@ class BiLSTM_CRF(nn.Module):
 
     def forward(self, sentence):  # dont confuse this with _forward_alg above.
         # Parameter sentence 表示 sentence id序列
-        # Get the emission scores from the BiLSTM
+        # Get the emission scores from the BiLSTM，传入sentence从已经训练好的模型得出状态矩阵probability
         lstm_feats = self._get_lstm_features(sentence)
 
         # Find the best path, given the features.
