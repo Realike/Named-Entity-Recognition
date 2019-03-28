@@ -38,6 +38,8 @@ class BiLSTM_CRF(nn.Module):
         # 初始化embedding, shape(vocab_size, embedding_dim)
         self.word_embeds = nn.Embedding(vocab_size, embedding_dim)
         # hiden_dim // 2 cause num_directions = 2
+        # nn.LSTM(input_features=embedding_dim, output_features=hidden_dim//2 (bidirectional))
+        # 总体matrix shape乘法: matrix * (nn.LSTM) * matrix
         self.lstm = nn.LSTM(embedding_dim, hidden_dim // 2,
                             num_layers=1, bidirectional=True)
 
@@ -50,12 +52,14 @@ class BiLSTM_CRF(nn.Module):
             torch.randn(self.tagset_size, self.tagset_size))
 
         # These two statements enforce the constraint that we never transfer
-        # to the start tag and we never transfer from the stop tag
+        # to the  start tag and we never transfer from the stop tag
+        # 此处只考虑了start和stop转移可能性(命名体识别足够)，可能也有其他考虑性(未添加)，比如词性标注名词后接名词
         self.transitions.data[tag_to_ix[START_TAG], :] = -10000
         self.transitions.data[:, tag_to_ix[STOP_TAG]] = -10000
 
         self.hidden = self.init_hidden()
 
+    # 初始化h_0, c_0
     def init_hidden(self):
         return (torch.randn(2, 1, self.hidden_dim // 2),
                 torch.randn(2, 1, self.hidden_dim // 2))
@@ -91,16 +95,19 @@ class BiLSTM_CRF(nn.Module):
         alpha = log_sum_exp(terminal_var)
         return alpha
 
+    # 返回状态矩阵probability
     def _get_lstm_features(self, sentence):
-        # ? 初始化采用init_hidden()为bi-lstm前向后向
-        # bi-lstm last_hidden shape(num_layers*num_directions=2, batch=1, hidden=EMBEDDING_DIM)
+        # 初始化采用init_hidden()为bi-lstm前向后向h_0, c_0
+        # bi-lstm 前向(或后向)last_hidden shape(num_layers*num_directions=2, batch=1, hidden=hidden_dim // 2)
         self.hidden = self.init_hidden()
         # sentence tensor([...])
         # word_embeds 构成lstm输入格式 --> shape(input_seq=len(sentence), batch=1, hidden=EMBEDDING_DIM)
         embeds = self.word_embeds(sentence).view(len(sentence), 1, -1)
-        # lstm_out shape(input_seq=len(sentence), batch=1, hidden=?) ?
+        # lstm_out shape(input_seq=len(sentence), batch=1, hidden=hidden_dim)
         lstm_out, self.hidden = self.lstm(embeds, self.hidden)
+        # to shape(len(sentence), hidden_dim)
         lstm_out = lstm_out.view(len(sentence), self.hidden_dim)
+        # lstm_feats shape(len(sentence), tagset_size)  未softmax
         lstm_feats = self.hidden2tag(lstm_out)
         return lstm_feats
 
