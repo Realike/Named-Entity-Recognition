@@ -3,6 +3,7 @@ import torch.autograd as autograd
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
+import torch.nn.functional as F
 
 torch.manual_seed(1)
 
@@ -53,9 +54,10 @@ class BiLSTM_CRF(nn.Module):
 
         # These two statements enforce the constraint that we never transfer
         # to the  start tag and we never transfer from the stop tag
-        # 此处只考虑了start和stop转移可能性(命名体识别足够)，可能也有其他考虑性(未添加)，比如词性标注名词后接名词
+        # 此处只考虑了name->start和stop->name转移可能性为0(命名体识别BIO足够)，可能也有其他考虑性(未添加)，比如词性标注名词后接名词
         self.transitions.data[tag_to_ix[START_TAG], :] = -10000
         self.transitions.data[:, tag_to_ix[STOP_TAG]] = -10000
+        # print(self.transitions)
 
         self.hidden = self.init_hidden()
 
@@ -108,17 +110,23 @@ class BiLSTM_CRF(nn.Module):
         lstm_out, self.hidden = self.lstm(embeds, self.hidden)
         # to shape(len(sentence), hidden_dim)
         lstm_out = lstm_out.view(len(sentence), self.hidden_dim)
-        # lstm_feats shape(len(sentence), tagset_size)  未softmax(此模型只需求score，不需softmax都可)
+        # lstm_feats shape(len(sentence), tagset_size)(matrix表示第i个词转到tags的概率)  未softmax(此模型只需求score，不需softmax都可)
         lstm_feats = self.hidden2tag(lstm_out)
+
         return lstm_feats
 
+    # 返回当前序列对应的score
     def _score_sentence(self, feats, tags):
         # Gives the score of a provided tag sequence
         score = torch.zeros(1)
+        # 将tags id前加入START_TAG, len(tags) + = 1
         tags = torch.cat([torch.tensor([self.tag_to_ix[START_TAG]], dtype=torch.long), tags])
         for i, feat in enumerate(feats):
+            # tag[i=0]为STRAT_TAG，self.transitions[tags[i + 1], tags[i]]: 第i个tags id到第i+1个tags id转移概率
+            #
             score = score + \
                 self.transitions[tags[i + 1], tags[i]] + feat[tags[i + 1]]
+        # 加上tags末尾到STOP_TAG转移概率
         score = score + self.transitions[self.tag_to_ix[STOP_TAG], tags[-1]]
         return score
 
