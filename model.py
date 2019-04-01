@@ -68,9 +68,12 @@ class BiLSTM_CRF(nn.Module):
 
     def _forward_alg(self, feats):
         # Do the forward algorithm to compute the partition function
+        # 初始化设所有除START_TAG=0外为-1000，为了将第一个数据取log exp的数据只有start标签起作用
         init_alphas = torch.full((1, self.tagset_size), -10000.)
+        # print('init:',init_alphas)
         # START_TAG has all of the score.
         init_alphas[0][self.tag_to_ix[START_TAG]] = 0.
+
 
         # Wrap in a variable so that we will get automatic backprop
         forward_var = init_alphas
@@ -81,18 +84,22 @@ class BiLSTM_CRF(nn.Module):
             for next_tag in range(self.tagset_size):
                 # broadcast the emission score: it is the same regardless of
                 # the previous tag
+                # feat[next_tag] to torch type and expand
                 emit_score = feat[next_tag].view(
                     1, -1).expand(1, self.tagset_size)
+                # print(emit_score)
                 # the ith entry of trans_score is the score of transitioning to
                 # next_tag from i
                 trans_score = self.transitions[next_tag].view(1, -1)
+                # print(trans_score)
                 # The ith entry of next_tag_var is the value for the
                 # edge (i -> next_tag) before we do log-sum-exp
                 next_tag_var = forward_var + trans_score + emit_score
                 # The forward variable for this tag is log-sum-exp of all the
                 # scores.
-                alphas_t.append(log_sum_exp(next_tag_var).view(1))
+                alphas_t.append(log_sum_exp(next_tag_var).view(1))  # alphas_t append的类型是tensor([0.3473], grad_fn=<ViewBackward>)
             forward_var = torch.cat(alphas_t).view(1, -1)
+
         terminal_var = forward_var + self.transitions[self.tag_to_ix[STOP_TAG]]
         alpha = log_sum_exp(terminal_var)
         return alpha
@@ -110,7 +117,7 @@ class BiLSTM_CRF(nn.Module):
         lstm_out, self.hidden = self.lstm(embeds, self.hidden)
         # to shape(len(sentence), hidden_dim)
         lstm_out = lstm_out.view(len(sentence), self.hidden_dim)
-        # lstm_feats shape(len(sentence), tagset_size)(matrix表示第i个词转到tags的概率)  未softmax(此模型只需求score，不需softmax都可)
+        # lstm_feats shape(len(sentence), tagset_size)(matrix表示第i个词转到tags id的概率)  未softmax(此模型只需求score，不需softmax都可)
         lstm_feats = self.hidden2tag(lstm_out)
 
         return lstm_feats
@@ -122,8 +129,8 @@ class BiLSTM_CRF(nn.Module):
         # 将tags id前加入START_TAG, len(tags) + = 1
         tags = torch.cat([torch.tensor([self.tag_to_ix[START_TAG]], dtype=torch.long), tags])
         for i, feat in enumerate(feats):
-            # tag[i=0]为STRAT_TAG，self.transitions[tags[i + 1], tags[i]]: 第i个tags id到第i+1个tags id转移概率
-            #
+            # tags[i=0]为STRAT_TAG，self.transitions[tags[i + 1], tags[i]]: 第i个tags id到第i+1个tags id转移概率
+            # feat[tags[i + 1]] 表示当前某个序列id
             score = score + \
                 self.transitions[tags[i + 1], tags[i]] + feat[tags[i + 1]]
         # 加上tags末尾到STOP_TAG转移概率
@@ -134,6 +141,7 @@ class BiLSTM_CRF(nn.Module):
         backpointers = []
 
         # Initialize the viterbi variables in log space
+        # 初始化设所有除START_TAG=0外为-1000，为了将第一个数据取log exp的数据只有start标签起作用
         init_vvars = torch.full((1, self.tagset_size), -10000.)
         init_vvars[0][self.tag_to_ix[START_TAG]] = 0
 
@@ -160,10 +168,12 @@ class BiLSTM_CRF(nn.Module):
 
         # Transition to STOP_TAG
         terminal_var = forward_var + self.transitions[self.tag_to_ix[STOP_TAG]]
+        # print('terminal_var:', terminal_var)
+        # print('backpointers:', backpointers)
         best_tag_id = argmax(terminal_var)
         path_score = terminal_var[0][best_tag_id]
 
-        # Follow the back pointers to decode the best path.
+        # Follow the back pointers to decode the best path. 回溯
         best_path = [best_tag_id]
         for bptrs_t in reversed(backpointers):
             best_tag_id = bptrs_t[best_tag_id]
